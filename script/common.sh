@@ -291,6 +291,9 @@ _download_raw_config() {
     local dest=$1
     local url=$2
     local agent='clash-verge/v2.0.4'
+    
+    # Download content to temporary file first
+    local temp_file="/tmp/clash_temp_$$"
     sudo curl \
         --silent \
         --show-error \
@@ -298,7 +301,7 @@ _download_raw_config() {
         --connect-timeout 4 \
         --retry 1 \
         --user-agent "$agent" \
-        --output "$dest" \
+        --output "$temp_file" \
         "$url" ||
         sudo wget \
             --no-verbose \
@@ -306,8 +309,21 @@ _download_raw_config() {
             --timeout 3 \
             --tries 1 \
             --user-agent "$agent" \
-            --output-document "$dest" \
+            --output-document "$temp_file" \
             "$url"
+    
+    # Check if content is Base64-encoded subscription
+    local content=$(sudo cat "$temp_file")
+    if echo "$content" | grep -q "^[A-Za-z0-9+/]*={0,2}$" && [ ${#content} -gt 100 ]; then
+        # Content appears to be Base64-encoded, decode it
+        _okcat '🔓' '检测到Base64编码的订阅内容，正在解码...'
+        echo "$content" | base64 -d | sudo tee "$dest" >/dev/null
+        sudo rm -f "$temp_file"
+    else
+        # Content is not Base64, copy as-is
+        sudo cp "$temp_file" "$dest"
+        sudo rm -f "$temp_file"
+    fi
 }
 _download_convert_config() {
     local dest=$1
@@ -328,6 +344,93 @@ _download_convert_config() {
     _download_raw_config "$dest" "$convert_url"
     _stop_convert
 }
+_convert_proxy_urls_to_clash() {
+    local dest=$1
+    local content=$(sudo cat "$dest")
+    
+    # Check if content contains proxy URLs (trojan://, ss://, vmess://, etc.)
+    if echo "$content" | grep -qE "^(trojan|ss|vmess|vless|ssr)://"; then
+        _okcat '🔄' '检测到代理URL列表，正在转换为Clash配置...'
+        
+        # Create a basic Clash configuration with proxy URLs
+        sudo tee "$dest" >/dev/null <<EOF
+port: 7890
+socks-port: 7891
+allow-lan: false
+mode: rule
+log-level: info
+external-controller: 0.0.0.0:9090
+
+proxies:
+EOF
+        
+        # Convert each proxy URL to Clash format
+        local proxy_count=0
+        echo "$content" | while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            
+            # Extract proxy type and details
+            if echo "$line" | grep -q "^trojan://"; then
+                local trojan_url="${line#trojan://}"
+                local password="${trojan_url%%@*}"
+                local server_info="${trojan_url#*@}"
+                local server="${server_info%%:*}"
+                local port="${server_info#*:}"
+                port="${port%%\?*}"
+                local name="${line##*#}"
+                [ "$name" = "$line" ] && name="Trojan-$(($proxy_count + 1))"
+                
+                # URL decode the name
+                name=$(echo "$name" | sed 's/%\([0-9A-Fa-f][0-9A-Fa-f]\)/\\x\1/g' | xargs -0 printf "%b")
+                
+                sudo tee -a "$dest" >/dev/null <<EOF
+  - name: "$name"
+    type: trojan
+    server: $server
+    port: $port
+    password: $password
+    udp: true
+    sni: $server
+    skip-cert-verify: true
+EOF
+                proxy_count=$((proxy_count + 1))
+            fi
+        done
+        
+        # Add proxy groups and rules
+        sudo tee -a "$dest" >/dev/null <<EOF
+
+proxy-groups:
+  - name: "Proxy"
+    type: select
+    proxies:
+      - DIRECT
+EOF
+        
+        # Add all proxies to the group
+        for i in $(seq 1 $proxy_count); do
+            sudo sed -i "/proxies:/a\\      - Trojan-$i" "$dest"
+        done
+        
+        sudo tee -a "$dest" >/dev/null <<EOF
+
+rules:
+  - DOMAIN-SUFFIX,local,DIRECT
+  - IP-CIDR,127.0.0.0/8,DIRECT
+  - IP-CIDR,172.16.0.0/12,DIRECT
+  - IP-CIDR,192.168.0.0/16,DIRECT
+  - IP-CIDR,10.0.0.0/8,DIRECT
+  - IP-CIDR,17.0.0.0/8,DIRECT
+  - IP-CIDR,100.64.0.0/10,DIRECT
+  - MATCH,Proxy
+EOF
+        
+        _okcat '✅' '代理URL转换完成'
+        return 0
+    fi
+    return 1
+}
+
 function _download_config() {
     local dest=$1
     local url=$2
@@ -335,8 +438,11 @@ function _download_config() {
     _download_raw_config "$dest" "$url" || return 1
     _okcat '🍃' '下载成功：内核验证配置...'
     _valid_config "$dest" || {
-        _failcat '🍂' "验证失败：尝试订阅转换..."
-        _download_convert_config "$dest" "$url" || _failcat '🍂' "转换失败：请检查日志：$BIN_SUBCONVERTER_LOG"
+        _failcat '🍂' "验证失败：尝试代理URL转换..."
+        _convert_proxy_urls_to_clash "$dest" || {
+            _failcat '🍂' "代理URL转换失败：尝试订阅转换..."
+            _download_convert_config "$dest" "$url" || _failcat '🍂' "转换失败：请检查日志：$BIN_SUBCONVERTER_LOG"
+        }
     }
 }
 

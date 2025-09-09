@@ -102,7 +102,7 @@ EOF
 }
 
 function clashstatus() {
-    sudo systemctl status "$BIN_KERNEL_NAME" "$@"
+    sudo systemctl status "$BIN_KERNEL_NAME" --no-pager --lines=20 "$@"
 }
 
 function clashui() {

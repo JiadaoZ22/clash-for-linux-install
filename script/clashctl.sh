@@ -263,6 +263,156 @@ function clashmixin() {
     esac
 }
 
+# Clash REST API: list / switch proxy nodes (selector group)
+_clash_api_curl() {
+    _get_ui_port
+    local secret=$(sudo "$BIN_YQ" '.secret // ""' "$CLASH_CONFIG_RUNTIME" 2>/dev/null)
+    local base="http://127.0.0.1:${UI_PORT}"
+    if [ -n "$secret" ]; then
+        curl -s -f -H "Authorization: Bearer $secret" "${base}$1"
+    else
+        curl -s -f "${base}$1"
+    fi
+}
+
+_clash_api_put() {
+    _get_ui_port
+    local secret=$(sudo "$BIN_YQ" '.secret // ""' "$CLASH_CONFIG_RUNTIME" 2>/dev/null)
+    local base="http://127.0.0.1:${UI_PORT}"
+    local path="$1" body="$2"
+    if [ -n "$secret" ]; then
+        curl -s -f -X PUT -H "Authorization: Bearer $secret" -H "Content-Type: application/json" -d "$body" "${base}${path}"
+    else
+        curl -s -f -X PUT -H "Content-Type: application/json" -d "$body" "${base}${path}"
+    fi
+}
+
+_urlencode() {
+    python3 -c "import sys, urllib.parse; print(urllib.parse.quote(sys.argv[1], safe=''))" "$1"
+}
+
+_clashnode_check_running() {
+    systemctl is-active "$BIN_KERNEL_NAME" >&/dev/null || {
+        _failcat "代理未运行，请先执行 clashon"
+        return 1
+    }
+}
+
+_clashnode_get_group() {
+    local resp="$1"
+    echo "$resp" | "$BIN_YQ" -p json '.proxies | to_entries | .[] | select(.value.type == "Selector") | .key' -r 2>/dev/null | head -1
+}
+
+_clashnode_format_list() {
+    local resp="$1" group="$2"
+    python3 -c "
+import json, sys
+
+data = json.loads(sys.stdin.read())
+proxies = data.get('proxies', {})
+group = proxies.get('$group', {})
+now = group.get('now', '')
+all_nodes = group.get('all', [])
+
+print(f'  当前: {now}')
+print(f'  {\"#\":>4}  {\"节点名\":30s}  {\"延迟(ms)\":>10}  质量')
+print(f'  {\"─\"*4}  {\"─\"*30}  {\"─\"*10}  {\"─\"*8}')
+
+for i, name in enumerate(all_nodes, 1):
+    node = proxies.get(name, {})
+    history = node.get('history', [])
+    delay = history[-1].get('delay', 0) if history else 0
+    if delay == 0:
+        delay_s = '  -'
+        quality = '未测试'
+    elif delay < 100:
+        delay_s = str(delay)
+        quality = '★★★★★'
+    elif delay < 200:
+        delay_s = str(delay)
+        quality = '★★★★☆'
+    elif delay < 350:
+        delay_s = str(delay)
+        quality = '★★★☆☆'
+    elif delay < 600:
+        delay_s = str(delay)
+        quality = '★★☆☆☆'
+    else:
+        delay_s = str(delay)
+        quality = '★☆☆☆☆'
+
+    marker = ' ◀' if name == now else ''
+    print(f'  {i:4d}  {name:30s}  {delay_s:>10}  {quality}{marker}')
+" <<< "$resp"
+}
+
+function clashnode() {
+    local sub="$1"
+    shift
+    case "$sub" in
+    list)
+        _clashnode_check_running || return 1
+        local resp=$(_clash_api_curl "/proxies")
+        [ -z "$resp" ] && { _failcat "无法连接 Clash API（端口 ${UI_PORT}）"; return 1; }
+        local group=$(_clashnode_get_group "$resp")
+        [ -z "$group" ] && { _failcat "未找到节点选择组（Selector）"; return 1; }
+        _okcat "节点选择组: $group"
+        _clashnode_format_list "$resp" "$group"
+        echo ""
+        _okcat "提示: 延迟为 '-' 表示未测试，执行 clash node test 可刷新全部延迟"
+        ;;
+    test)
+        _clashnode_check_running || return 1
+        local resp=$(_clash_api_curl "/proxies")
+        [ -z "$resp" ] && { _failcat "无法连接 Clash API（端口 ${UI_PORT}）"; return 1; }
+        local group=$(_clashnode_get_group "$resp")
+        [ -z "$group" ] && { _failcat "未找到节点选择组"; return 1; }
+        local encoded_group=$(_urlencode "$group")
+        _okcat "正在测试所有节点延迟，请稍候..."
+        _clash_api_curl "/group/${encoded_group}/delay?url=http://www.gstatic.com/generate_204&timeout=5000" >/dev/null 2>&1
+        resp=$(_clash_api_curl "/proxies")
+        _okcat "节点选择组: $group"
+        _clashnode_format_list "$resp" "$group"
+        ;;
+    use)
+        [ -z "$1" ] && {
+            _failcat "用法: clash node use <节点名>  例如: clash node use \"新加坡 01\""
+            return 1
+        }
+        _clashnode_check_running || return 1
+        local resp=$(_clash_api_curl "/proxies")
+        local group=$(_clashnode_get_group "$resp")
+        [ -z "$group" ] && { _failcat "未找到节点选择组"; return 1; }
+        local path="/proxies/$(_urlencode "$group")"
+        local body
+        body=$(printf '%s' "$1" | python3 -c "import sys,json; print(json.dumps({'name': sys.stdin.read().strip()}))")
+        _clash_api_put "$path" "$body" && _okcat "已切换至: $1" || _failcat "切换失败（请检查节点名是否与 list 中一致）"
+        ;;
+    auto)
+        _clashnode_check_running || return 1
+        local resp=$(_clash_api_curl "/proxies")
+        local group=$(_clashnode_get_group "$resp")
+        [ -z "$group" ] && { _failcat "未找到节点选择组"; return 1; }
+        local first
+        first=$(echo "$resp" | "$BIN_YQ" -p json ".proxies[\"$group\"].all[0]" -r 2>/dev/null)
+        [ -z "$first" ] && { _failcat "无法获取自动选择项"; return 1; }
+        local path="/proxies/$(_urlencode "$group")"
+        local body
+        body=$(printf '%s' "$first" | python3 -c "import sys,json; print(json.dumps({'name': sys.stdin.read().strip()}))")
+        _clash_api_put "$path" "$body" && _okcat "已切回自动选择: $first" || _failcat "切换失败"
+        ;;
+    *)
+        cat <<EOF
+用法: clash node <list|test|use|auto>
+    list              列出所有节点及延迟/质量
+    test              测试所有节点延迟并显示结果
+    use <节点名>       切换到指定节点（如 "新加坡 01"）
+    auto              切回自动选择（延迟最低节点）
+EOF
+        ;;
+    esac
+}
+
 function clashctl() {
     case "$1" in
     on)
@@ -298,6 +448,10 @@ function clashctl() {
         shift
         clashupdate "$@"
         ;;
+    node)
+        shift
+        clashnode "$@"
+        ;;
     *)
         cat <<EOF
 
@@ -314,6 +468,7 @@ Commands:
     mixin    [-e|-r]        Mixin 配置
     secret   [SECRET]       Web 密钥
     update   [auto|log]     更新订阅
+    node     list|test|use|auto  节点列表 / 测速 / 切换
 
 EOF
         ;;

@@ -2,7 +2,10 @@
 system-proxy:
   enable: true
 
-# Web 控制台配置
+# 本地代理端口（覆盖订阅里的设置；终端里 http_proxy 用此端口）
+# mixed-port: 7890   # 默认 7890，与 subscription 冲突时可取消注释并改成其他端口
+
+# Web 控制台配置（覆盖订阅里的 external-controller）
 external-controller: "0.0.0.0:9090"
 external-ui: public
 secret:

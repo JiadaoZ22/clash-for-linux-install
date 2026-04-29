@@ -11,7 +11,7 @@ _get_kernel
 
 /usr/bin/install -D <(gzip -dc "$ZIP_KERNEL") "${RESOURCES_BIN_DIR}/$BIN_KERNEL_NAME"
 tar -xf "$ZIP_SUBCONVERTER" -C "$RESOURCES_BIN_DIR"
-tar -xf "$ZIP_YQ" -C "${RESOURCES_BIN_DIR}"
+tar -xf"$ZIP_YQ" -C "${RESOURCES_BIN_DIR}"
 # shellcheck disable=SC2086
 /bin/mv -f ${RESOURCES_BIN_DIR}/yq_* "${RESOURCES_BIN_DIR}/yq"
 

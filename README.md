@@ -1,6 +1,6 @@
  # Linux 一键安装 Clash
 
-> **Fork 说明**：本仓库 fork 自 [nelvko/clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install)，在原有功能上增加了：端口/Mixin 覆盖说明、**节点列表与延迟/质量显示**（`clash node list` / `clash node test`）、节点切换与自动选择（`clash node use` / `clash node auto`）、节点名称标识说明（流量倍率、家宽）等。上游更新可随时通过 `git fetch origin` 合并。
+> **Fork 说明**：本仓库 fork 自 [nelvko/clash-for-linux-install](https://github.com/nelvko/clash-for-linux-install)，在原有功能上增加了：端口/Mixin 覆盖说明、**节点列表与延迟/质量显示**（`clash node list` / `clash node test`）、节点切换与自动选择（`clash node use` 支持 **list 中「#」序号** 或完整名、`clash node auto`）、节点名称标识说明（流量倍率、家宽）等。上游更新可随时通过 `git fetch origin` 合并。
 
 ![GitHub License](https://img.shields.io/github/license/nelvko/clash-for-linux-install)
 ![GitHub top language](https://img.shields.io/github/languages/top/nelvko/clash-for-linux-install)
@@ -197,9 +197,12 @@ $ clashmixin -r
 
 3. **切换到指定节点（如新加坡）**
    ```bash
-   clash node use "新加坡 01"
+   clash node use 31
+   clash node use "🇸🇬 新加坡 01"
    ```
-   节点名必须与 `clash node list` 里显示的完全一致（含空格、数字），建议用双引号包住。
+   - **推荐**：直接填 `clash node list` 左侧 **「#」列** 的数字（如 `31`），无需复制带国旗的完整名称。  
+   - 仍可使用**完整节点名**（须与列表**完全一致**，含 emoji、空格），建议用双引号包住。  
+   - 纯数字参数一律按序号解析；若某节点名称恰好是纯数字且与序号冲突，请以完整名称切换。
 
 4. **切回自动选择（按延迟自动选）**
    ```bash

@@ -304,7 +304,7 @@ _clashnode_get_group() {
 }
 
 _clashnode_format_list() {
-    local resp="$1" group="$2"
+    local resp="$1" group="$2" dup="${3:-}"
     python3 -c "
 import json, sys
 
@@ -317,6 +317,8 @@ all_nodes = group.get('all', [])
 print(f'  当前: {now}')
 print(f'  {\"#\":>4}  {\"节点名\":30s}  {\"延迟(ms)\":>10}  质量')
 print(f'  {\"─\"*4}  {\"─\"*30}  {\"─\"*10}  {\"─\"*8}')
+
+current_line = None
 
 for i, name in enumerate(all_nodes, 1):
     node = proxies.get(name, {})
@@ -342,7 +344,14 @@ for i, name in enumerate(all_nodes, 1):
         quality = '★☆☆☆☆'
 
     marker = ' ◀' if name == now else ''
-    print(f'  {i:4d}  {name:30s}  {delay_s:>10}  {quality}{marker}')
+    line = f'  {i:4d}  {name:30s}  {delay_s:>10}  {quality}{marker}'
+    print(line)
+    if name == now:
+        current_line = line
+
+if '$dup' == 'dup' and current_line:
+    print('  Current Selection ' + '-' * 40)
+    print(current_line)
 " <<< "$resp"
 }
 
@@ -372,21 +381,43 @@ function clashnode() {
         _clash_api_curl "/group/${encoded_group}/delay?url=http://www.gstatic.com/generate_204&timeout=5000" >/dev/null 2>&1
         resp=$(_clash_api_curl "/proxies")
         _okcat "节点选择组: $group"
-        _clashnode_format_list "$resp" "$group"
+        _clashnode_format_list "$resp" "$group" "dup"
         ;;
     use)
         [ -z "$1" ] && {
-            _failcat "用法: clash node use <节点名>  例如: clash node use \"新加坡 01\""
+            _failcat "用法: clash node use <#|节点名>  例如: clash node use 31  或  clash node use \"🇸🇬 新加坡 01\""
             return 1
         }
         _clashnode_check_running || return 1
         local resp=$(_clash_api_curl "/proxies")
+        [ -z "$resp" ] && { _failcat "无法连接 Clash API（端口 ${UI_PORT}）"; return 1; }
         local group=$(_clashnode_get_group "$resp")
         [ -z "$group" ] && { _failcat "未找到节点选择组"; return 1; }
+        local orig_arg="$1"
+        local target_name="$1"
+        # 与 list 中「#」列一致：纯数字 1..N 按序号解析为 all[N-1]，否则按完整节点名
+        if [[ "$orig_arg" =~ ^[1-9][0-9]*$ ]]; then
+            local idx=$((orig_arg - 1))
+            target_name=$(echo "$resp" | "$BIN_YQ" -p json ".proxies[\"$group\"].all[$idx]" -r 2>/dev/null)
+            if [ -z "$target_name" ] || [ "$target_name" = "null" ]; then
+                local nmax
+                nmax=$(echo "$resp" | "$BIN_YQ" -p json ".proxies[\"$group\"].all | length" -r 2>/dev/null)
+                _failcat "序号 $orig_arg 无效，当前列表共 ${nmax:-0} 个节点（clash node list 查看 # 列）"
+                return 1
+            fi
+        fi
         local path="/proxies/$(_urlencode "$group")"
         local body
-        body=$(printf '%s' "$1" | python3 -c "import sys,json; print(json.dumps({'name': sys.stdin.read().strip()}))")
-        _clash_api_put "$path" "$body" && _okcat "已切换至: $1" || _failcat "切换失败（请检查节点名是否与 list 中一致）"
+        body=$(printf '%s' "$target_name" | python3 -c "import sys,json; print(json.dumps({'name': sys.stdin.read().strip()}))")
+        if _clash_api_put "$path" "$body"; then
+            if [[ "$orig_arg" =~ ^[1-9][0-9]*$ ]] && [ "$orig_arg" != "$target_name" ]; then
+                _okcat "已切换至 [#$orig_arg] $target_name"
+            else
+                _okcat "已切换至: $target_name"
+            fi
+        else
+            _failcat "切换失败（请检查节点名或与 list 中 # 是否一致）"
+        fi
         ;;
     auto)
         _clashnode_check_running || return 1
@@ -406,7 +437,7 @@ function clashnode() {
 用法: clash node <list|test|use|auto>
     list              列出所有节点及延迟/质量
     test              测试所有节点延迟并显示结果
-    use <节点名>       切换到指定节点（如 "新加坡 01"）
+    use <#|节点名>     切换节点：填 list 中「#」列数字，或完整节点名（含 emoji）
     auto              切回自动选择（延迟最低节点）
 EOF
         ;;

@@ -152,6 +152,34 @@ $ clashmixin -r
 - 运行时配置是订阅配置和 `Mixin` 配置的并集。
 - 相同配置项优先级：`Mixin` 配置 > 订阅配置。
 
+### 自定义分流：指定域名直连（如公司内网）
+
+在 `Mixin` 的 `rules` 顶部添加规则，即可让指定域名绕过代理直连，实现公司流量与外网流量分离：
+
+```yaml
+rules:
+  - DOMAIN-KEYWORD,midea,DIRECT # 域名含 midea 的一律直连
+```
+
+- `DOMAIN-KEYWORD` 按域名关键字匹配（`aimp.midea.com`、`xxx.midea.com.cn` 均可命中），但不匹配 URL 路径。
+- 规则自上而下匹配，`Mixin` 的规则会排在订阅规则之前，优先生效。
+
+若内网域名只有公司 DNS 能解析（现象：开启代理后内网站点无法访问，`clashoff` 后恢复），还需在 `Mixin` 的 `dns` 中指定内网 DNS，并让这些域名跳过 `fake-ip`：
+
+```yaml
+dns:
+  nameserver-policy:
+    "+.midea.com": [10.156.20.35, 10.156.20.36] # 替换为公司内网 DNS
+    "+.midea.com.cn": [10.156.20.35, 10.156.20.36]
+  fake-ip-filter:
+    - "+.midea.com"
+    - "+.midea.com.cn"
+```
+
+- 原因：`fake-ip` 模式下公共 DNS（114.114.114.114 / 8.8.8.8）解析不到内网域名，`nameserver-policy` 让指定域名改走内网 DNS 解析。
+- 内网 DNS 地址可通过 `resolvectl status` 或 `nmcli dev show <网卡> | grep -i dns` 查看。
+- 用 `clashmixin -e` 编辑保存后会自动合并配置并重启生效；验证：`curl -x http://127.0.0.1:7890 -I https://aimp.midea.com` 能通即分流成功。
+
 ### 卸载
 
 ```bash

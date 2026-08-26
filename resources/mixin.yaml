@@ -15,6 +15,7 @@ authentication:
 # 自定义规则
 rules:
   - DOMAIN,api64.ipify.org,DIRECT # 用于 clashui 获取真实公网 IP
+  # - DOMAIN-KEYWORD,company,DIRECT # 示例：公司域名直连分流，详见 README「自定义分流」
 
 # tun 配置
 tun:
@@ -40,3 +41,8 @@ dns:
   nameserver:
     - 114.114.114.114
     - 8.8.8.8
+  # 内网域名只有公司 DNS 能解析时，取消注释并替换为内网 DNS（详见 README「自定义分流」）
+  # nameserver-policy:
+  #   "+.company.com": [10.0.0.1]
+  # fake-ip-filter:
+  #   - "+.company.com"

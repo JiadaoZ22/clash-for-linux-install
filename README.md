@@ -66,51 +66,51 @@ bash uninstall.sh
 - [Usage](https://github.com/nelvko/clash-for-linux-install/wiki) — 命令用法与示例。
 - [FAQ](https://github.com/nelvko/clash-for-linux-install/wiki/FAQ) — 常见问题。
 
-## 🧭 自定义分流：指定域名直连（如公司内网）
+## 🧭 Custom Split-Routing: Direct Access for Specific Domains (e.g. Company Intranet)
 
-`Mixin` 对**所有订阅全局生效**（切换/更新订阅时都会与 Mixin 重新合并），在 `rules.prepend` 中添加规则即可让指定域名绕过代理直连：
+`Mixin` applies **globally to all subscriptions** — switching or updating subscriptions always re-merges the base config with your Mixin. Add a rule to `rules.prepend` to bypass the proxy for specific domains:
 
 ```yaml
 proxies:
   prepend:
-    - {name: MIDEA-DIRECT, type: direct, udp: true, interface-name: enp130s0} # 绑定公司网卡
+    - {name: MIDEA-DIRECT, type: direct, udp: true, interface-name: enp130s0} # bind to the company NIC
 
 rules:
   prepend:
-    - DOMAIN-KEYWORD,midea,MIDEA-DIRECT # 域名含 midea 的一律从公司网卡直连
+    - DOMAIN-KEYWORD,midea,MIDEA-DIRECT # any domain containing "midea" goes direct via the company NIC
 ```
 
-- `DOMAIN-KEYWORD` 按域名关键字匹配（`aimp.midea.com`、`xxx.midea.com.cn` 均可命中），但不匹配 URL 路径。
-- `prepend` 的规则/节点会排在订阅内容之前，自上而下匹配，优先生效。
-- `interface-name` 让该出站的流量物理上从指定网卡发出（`SO_BINDTODEVICE`），与系统默认路由无关；不需要网卡绑定时直接用内置的 `DIRECT` 即可。
+- `DOMAIN-KEYWORD` matches a keyword in the domain name (hits `aimp.midea.com`, `xxx.midea.com.cn`, etc.), but does **not** match URL paths.
+- `prepend` rules/proxies are placed before the subscription's own entries and are matched top-down, so they take priority.
+- `interface-name` forces the outbound's traffic out of the given NIC (`SO_BINDTODEVICE`), independent of the system default route. If you don't need NIC binding, just use the built-in `DIRECT` instead.
 
-若内网域名只有公司 DNS 能解析（现象：开启代理后内网站点无法访问，`clashctl off` 后恢复），还需在 `Mixin` 中补充 `dns` 配置，指定内网 DNS：
+If intranet domains can only be resolved by the company DNS (symptom: intranet sites unreachable while the proxy is on, working again after `clashctl off`), also add a `dns` section to `Mixin` pointing those domains at the internal DNS servers:
 
 ```yaml
 dns:
   nameserver-policy:
-    "+.midea.com": ["10.156.20.35#MIDEA-DIRECT", "10.156.20.36#MIDEA-DIRECT"] # 替换为公司内网 DNS
+    "+.midea.com": ["10.156.20.35#MIDEA-DIRECT", "10.156.20.36#MIDEA-DIRECT"] # replace with your company DNS
     "+.midea.com.cn": ["10.156.20.35#MIDEA-DIRECT", "10.156.20.36#MIDEA-DIRECT"]
 ```
 
-- 原因：`fake-ip` 模式下公共 DNS 解析不到内网域名，`nameserver-policy` 让指定域名改走内网 DNS 解析。
-- DNS 服务器后的 `#出站名` 表示该 DNS 查询也从公司网卡发出；Tun 开启时内核会把默认出口绑定到默认路由网卡，不指定会导致内网 DNS 查询走错网卡超时。
-- 内网 DNS 地址可通过 `resolvectl status` 或 `nmcli dev show <网卡> | grep -i dns` 查看。
-- 用 `clashctl mixin -e` 编辑保存后会自动合并配置并重启生效；验证：`curl -x http://127.0.0.1:7890 -I https://aimp.midea.com` 能通即分流成功。
+- Why: in `fake-ip` mode public DNS servers can't resolve intranet domains; `nameserver-policy` routes those lookups to the internal DNS instead.
+- The `#outbound-name` suffix on a DNS server sends the query itself through that outbound. With Tun enabled, the kernel binds default egress to the default-route NIC — without this, internal DNS queries leave via the wrong interface and time out.
+- Find your internal DNS servers with `resolvectl status` or `nmcli dev show <iface> | grep -i dns`.
+- Editing via `clashctl mixin -e` re-merges and restarts automatically on save. Verify with: `curl -x http://127.0.0.1:7890 -I https://aimp.midea.com` — a response means split-routing works.
 
-### 进阶：网卡级分流（公司流量走公司网，其余一切走外部网络）
+### Advanced: NIC-Level Split (company traffic via company network, everything else via an outside network)
 
-双网卡场景（如公司有线 + 个人热点）下，让默认路由走外部网络、仅内网网段走公司网关，配合上面的 `interface-name` 出站即可实现物理隔离：
+On a dual-NIC setup (e.g. company ethernet + personal hotspot), make the outside network the default route and pin only the intranet prefixes to the company gateway; combined with the `interface-name` outbound above, this gives physical separation:
 
 ```bash
-sudo nmcli con mod "Wired connection 1" ipv4.route-metric 700 ipv4.routes "10.0.0.0/8 10.156.64.1" # 公司网段走公司网关
-sudo nmcli con mod "MIFI_2926" ipv4.route-metric 100  # 个人热点成为默认出口
+sudo nmcli con mod "Wired connection 1" ipv4.route-metric 700 ipv4.routes "10.0.0.0/8 10.156.64.1" # company prefixes via company gateway
+sudo nmcli con mod "MIFI_2926" ipv4.route-metric 100  # personal hotspot becomes the default egress
 sudo nmcli con up "MIFI_2926" && sudo nmcli con up "Wired connection 1"
 ```
 
-- 效果：代理上行与普通流量经个人热点发出，公司看不到翻墙流量；仅 midea 域名（经 `MIDEA-DIRECT` 绑定的网卡）与公司内网网段（静态路由）走公司网络。
-- 验证：`ss -tn` 观察 mihomo 到机场服务器的连接源地址应为热点 IP，到内网站点的连接源地址应为公司 IP。
-- 回退：`sudo nmcli con mod "Wired connection 1" ipv4.route-metric 100 ipv4.routes ""`，并将热点 metric 调回 600 后重连。
+- Result: proxy uplinks and all ordinary traffic leave via the personal hotspot — the company network sees no VPN traffic. Only midea domains (via the `MIDEA-DIRECT` bound NIC) and company intranet prefixes (static route) use the company network.
+- Verify with `ss -tn`: connections from mihomo to the airport servers should show the hotspot IP as source; connections to intranet sites should show the company IP.
+- Rollback: `sudo nmcli con mod "Wired connection 1" ipv4.route-metric 100 ipv4.routes ""`, set the hotspot metric back to 600, then reconnect both.
 
 ## 💖 Support
 

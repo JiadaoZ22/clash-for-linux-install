@@ -19,7 +19,7 @@ rules:
   prepend:
     - DOMAIN,api64.ipify.org,DIRECT # 用于 clashui 获取真实公网 IP
     # - DOMAIN-KEYWORD,github,proxy   # 用于 clashupgrade 升级内核
-    # - DOMAIN-KEYWORD,company,DIRECT # 公司域名直连分流，详见 README「自定义分流」
+    # - DOMAIN-KEYWORD,company,DIRECT # company domains direct; see README "Custom Split-Routing"
   append:
 
 proxies:

@@ -68,33 +68,49 @@ bash uninstall.sh
 
 ## 🧭 自定义分流：指定域名直连（如公司内网）
 
-在 `Mixin` 的 `rules.prepend` 中添加规则，即可让指定域名绕过代理直连，实现公司流量与外网流量分离：
+`Mixin` 对**所有订阅全局生效**（切换/更新订阅时都会与 Mixin 重新合并），在 `rules.prepend` 中添加规则即可让指定域名绕过代理直连：
 
 ```yaml
+proxies:
+  prepend:
+    - {name: MIDEA-DIRECT, type: direct, udp: true, interface-name: enp130s0} # 绑定公司网卡
+
 rules:
   prepend:
-    - DOMAIN-KEYWORD,midea,DIRECT # 域名含 midea 的一律直连
+    - DOMAIN-KEYWORD,midea,MIDEA-DIRECT # 域名含 midea 的一律从公司网卡直连
 ```
 
 - `DOMAIN-KEYWORD` 按域名关键字匹配（`aimp.midea.com`、`xxx.midea.com.cn` 均可命中），但不匹配 URL 路径。
-- `prepend` 的规则会排在订阅规则之前，自上而下匹配，优先生效。
+- `prepend` 的规则/节点会排在订阅内容之前，自上而下匹配，优先生效。
+- `interface-name` 让该出站的流量物理上从指定网卡发出（`SO_BINDTODEVICE`），与系统默认路由无关；不需要网卡绑定时直接用内置的 `DIRECT` 即可。
 
-若内网域名只有公司 DNS 能解析（现象：开启代理后内网站点无法访问，`clashctl off` 后恢复），还需在 `Mixin` 中补充 `dns` 配置，指定内网 DNS 并让这些域名跳过 `fake-ip`：
+若内网域名只有公司 DNS 能解析（现象：开启代理后内网站点无法访问，`clashctl off` 后恢复），还需在 `Mixin` 中补充 `dns` 配置，指定内网 DNS：
 
 ```yaml
 dns:
   nameserver-policy:
-    "+.midea.com": [10.156.20.35, 10.156.20.36] # 替换为公司内网 DNS
-    "+.midea.com.cn": [10.156.20.35, 10.156.20.36]
-  fake-ip-filter:
-    - "+.midea.com"
-    - "+.midea.com.cn"
+    "+.midea.com": ["10.156.20.35#MIDEA-DIRECT", "10.156.20.36#MIDEA-DIRECT"] # 替换为公司内网 DNS
+    "+.midea.com.cn": ["10.156.20.35#MIDEA-DIRECT", "10.156.20.36#MIDEA-DIRECT"]
 ```
 
 - 原因：`fake-ip` 模式下公共 DNS 解析不到内网域名，`nameserver-policy` 让指定域名改走内网 DNS 解析。
-- 注意：`fake-ip-filter` 是列表，深合并时会整体替换订阅中的同名列表，如需保留订阅原有条目请一并复制过来。
+- DNS 服务器后的 `#出站名` 表示该 DNS 查询也从公司网卡发出；Tun 开启时内核会把默认出口绑定到默认路由网卡，不指定会导致内网 DNS 查询走错网卡超时。
 - 内网 DNS 地址可通过 `resolvectl status` 或 `nmcli dev show <网卡> | grep -i dns` 查看。
 - 用 `clashctl mixin -e` 编辑保存后会自动合并配置并重启生效；验证：`curl -x http://127.0.0.1:7890 -I https://aimp.midea.com` 能通即分流成功。
+
+### 进阶：网卡级分流（公司流量走公司网，其余一切走外部网络）
+
+双网卡场景（如公司有线 + 个人热点）下，让默认路由走外部网络、仅内网网段走公司网关，配合上面的 `interface-name` 出站即可实现物理隔离：
+
+```bash
+sudo nmcli con mod "Wired connection 1" ipv4.route-metric 700 ipv4.routes "10.0.0.0/8 10.156.64.1" # 公司网段走公司网关
+sudo nmcli con mod "MIFI_2926" ipv4.route-metric 100  # 个人热点成为默认出口
+sudo nmcli con up "MIFI_2926" && sudo nmcli con up "Wired connection 1"
+```
+
+- 效果：代理上行与普通流量经个人热点发出，公司看不到翻墙流量；仅 midea 域名（经 `MIDEA-DIRECT` 绑定的网卡）与公司内网网段（静态路由）走公司网络。
+- 验证：`ss -tn` 观察 mihomo 到机场服务器的连接源地址应为热点 IP，到内网站点的连接源地址应为公司 IP。
+- 回退：`sudo nmcli con mod "Wired connection 1" ipv4.route-metric 100 ipv4.routes ""`，并将热点 metric 调回 600 后重连。
 
 ## 💖 Support
 

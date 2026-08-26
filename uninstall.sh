@@ -1,20 +1,22 @@
-# shellcheck disable=SC2148
-# shellcheck disable=SC1091
-. script/common.sh >&/dev/null
-. script/clashctl.sh >&/dev/null
+#!/usr/bin/env bash
 
-_valid_env
+CLASHCTL_SRC="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+. "$CLASHCTL_SRC/scripts/preflight.sh"
+. "$CLASHCTL_SRC/scripts/cmd/off.sh"
 
-clashoff >&/dev/null
+! _is_root && tunstatus >&/dev/null && {
+    _errorcat "请先关闭 Tun 模式"
+    exit
+}
+uninstall_service
 
-systemctl disable "$BIN_KERNEL_NAME" >&/dev/null
-rm -f "/etc/systemd/system/${BIN_KERNEL_NAME}.service"
-systemctl daemon-reload
+# 清理旧版 sub update --auto 遗留的自管 crontab
+command -v crontab >&/dev/null && {
+    crontab -l 2>/dev/null | grep -Fv "$CLASHCTL_CRON_TAG" | crontab -
+}
 
-rm -rf "$CLASH_BASE_DIR"
-rm -rf "$RESOURCES_BIN_DIR"
-sed -i '/clashupdate/d' "$CLASH_CRON_TAB" >&/dev/null
-_set_rc unset
+/usr/bin/rm -rf "$CLASHCTL_HOME"
+revoke_rc
 
-_okcat '✨' '已卸载，相关配置已清除'
-_quit
+_okcat '✨' "已卸载，相关配置已清除"
+[ -n "$http_proxy" ] && _failcat '❗' "当前终端仍残留代理环境变量，重开终端即可清除"

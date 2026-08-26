@@ -1,170 +1,85 @@
-# Linux 一键安装 Clash
+<h1 align="center">
+  clashctl
+</h1>
 
-![GitHub License](https://img.shields.io/github/license/nelvko/clash-for-linux-install)
-![GitHub top language](https://img.shields.io/github/languages/top/nelvko/clash-for-linux-install)
-![GitHub Repo stars](https://img.shields.io/github/stars/nelvko/clash-for-linux-install)
+<p align="center">mihomo / clash 一键部署与管理工具</p>
 
-![preview](resources/preview.png)
+<p align="center">
+  <img alt="GitHub License" src="https://img.shields.io/github/license/nelvko/clash-for-linux-install" />
+  <img alt="GitHub top language" src="https://img.shields.io/github/languages/top/nelvko/clash-for-linux-install" />
+  <img alt="GitHub Repo stars" src="https://img.shields.io/github/stars/nelvko/clash-for-linux-install" />
+  <a href="https://deepwiki.com/nelvko/clash-for-linux-install"><img src="https://deepwiki.com/badge.svg" alt="Ask DeepWiki"></a>
+</p>
 
-- 默认安装 `mihomo` 内核，[可选安装](https://github.com/nelvko/clash-for-linux-install/wiki/FAQ#%E5%AE%89%E8%A3%85-clash-%E5%86%85%E6%A0%B8) `clash`。
-- 自动使用 [subconverter](https://github.com/tindy2013/subconverter) 进行本地订阅转换。
-- 多架构支持，适配主流 `Linux` 发行版：`CentOS 7.6`、`Debian 12`、`Ubuntu 24.04.1 LTS`。
+## 📸 Preview
 
-## 快速开始
+![preview](preview.png)
 
-### 环境要求
+## ✨ Features
 
-- 用户权限：`root`、`sudo`。（无权限可参考：[#91](https://github.com/nelvko/clash-for-linux-install/issues/91)）
-- `shell` 支持：`bash`、`zsh`。
+- **开箱即用**：一键部署 `mihomo` / `clash` 内核、Web 面板及运行依赖。
+- **广泛兼容**：支持 `root` / 普通用户，适配主流 `Linux` 发行版、容器环境及 `systemd` / `OpenRC` 等 `init` 系统。
+- **统一管理**：通过 `clashctl` 管理代理启停、状态查看、日志追踪、Web 面板、TUN 模式、访问密钥与内核升级等。
+- **订阅管理**：支持多订阅源配置、一键新增、切换、更新等，并集成 [subconverter](https://github.com/tindy2013/subconverter) 实现订阅格式转换。
 
-### 一键安装
+## 🚀 Installation
 
-下述命令适用于 `x86_64` 架构，其他架构请戳：[一键安装-多架构](https://github.com/nelvko/clash-for-linux-install/wiki#%E4%B8%80%E9%94%AE%E5%AE%89%E8%A3%85-%E5%A4%9A%E6%9E%B6%E6%9E%84)
+在终端中执行以下命令即可完成安装：
 
 ```bash
-git clone --branch master --depth 1 https://gh-proxy.com/https://github.com/nelvko/clash-for-linux-install.git \
+git clone --branch master --depth 1 https://gh-proxy.org/https://github.com/nelvko/clash-for-linux-install.git \
   && cd clash-for-linux-install \
-  && sudo bash install.sh
+  && bash install.sh
 ```
 
-> 如遇问题，请在查阅[常见问题](https://github.com/nelvko/clash-for-linux-install/wiki/FAQ)及 [issue](https://github.com/nelvko/clash-for-linux-install/issues?q=is%3Aissue) 未果后进行反馈。
-
-- 上述克隆命令使用了[加速前缀](https://gh-proxy.com/)，如失效请更换其他[可用链接](https://ghproxy.link/)。
-- 默认通过远程订阅获取配置进行安装，本地配置安装详见：[#39](https://github.com/nelvko/clash-for-linux-install/issues/39)
+- 上述命令使用了[加速前缀](https://gh-proxy.org/)，如失效请更换其他[可用链接](https://ghproxy.link/)。
+- 可通过 `.env.install` 文件自定义安装选项。
 - 没有订阅？[click me](https://次元.net/auth/register?code=oUbI)
 
-### 命令一览
+## 🎯 Quick Start
 
-执行 `clash` 列出开箱即用的快捷命令。
-
-> 兼容多种命令风格
+安装完成后，即可使用 `clashctl` 管理代理：
 
 ```bash
-$ clash
-Usage:
-    clash     COMMAND [OPTION]
-    mihomo    COMMAND [OPTION]
-    clashctl  COMMAND [OPTION]
-    mihomoctl COMMAND [OPTION]
+clashctl on              # 开启代理
+clashctl off             # 关闭代理
+clashctl status          # 查看内核状态
+clashctl ui              # 查看 Web 面板地址
 
-Commands:
-    on                   开启代理
-    off                  关闭代理
-    ui                   面板地址
-    status               内核状况
-    tun      [on|off]    Tun 模式
-    mixin    [-e|-r]     Mixin 配置
-    secret   [SECRET]    Web 密钥
-    update   [auto|log]  更新订阅
+clashctl sub add <url>   # 添加订阅
+clashctl sub update      # 更新订阅
+clashctl node            # 切换节点
+
+clashctl -h              # 查看全部命令
 ```
 
-### 优雅启停
+## 🧹 Uninstall
+
+在项目目录下执行以下命令即可干净卸载（清除内核、配置及服务）：
 
 ```bash
-$ clashoff
-😼 已关闭代理环境
-
-$ clashon
-😼 已开启代理环境
+bash uninstall.sh
 ```
 
-<details>
+## 📖 Documentation
 
-<summary>原理</summary>
+- [Usage](https://github.com/nelvko/clash-for-linux-install/wiki) — 命令用法与示例。
+- [FAQ](https://github.com/nelvko/clash-for-linux-install/wiki/FAQ) — 常见问题。
 
-- 使用 `systemctl` 控制 `clash` 启停，并调整代理环境变量的值（http_proxy 等）。应用程序在发起网络请求时，会通过其指定的代理地址转发流量，不调整会造成：关闭代理但未卸载代理变量导致仍转发请求、开启代理后未设置代理地址导致请求不转发。
-- `clashon` 等命令封装了上述流程。
+## 🧭 自定义分流：指定域名直连（如公司内网）
 
-</details>
-
-### Web 控制台
-
-```bash
-$ clashui
-╔═══════════════════════════════════════════════╗
-║                😼 Web 控制台                  ║
-║═══════════════════════════════════════════════║
-║                                               ║
-║     🔓 注意放行端口：9090                      ║
-║     🏠 内网：http://192.168.0.1:9090/ui       ║
-║     🌏 公网：http://255.255.255.255:9090/ui   ║
-║     ☁️ 公共：http://board.zash.run.place      ║
-║                                               ║
-╚═══════════════════════════════════════════════╝
-
-$ clashsecret 666
-😼 密钥更新成功，已重启生效
-
-$ clashsecret
-😼 当前密钥：666
-```
-
-- 通过浏览器打开 Web 控制台，实现可视化操作：切换节点、查看日志等。
-- 控制台密钥默认为空，若暴露到公网使用建议更新密钥。
-
-### 更新订阅
-
-```bash
-$ clashupdate https://example.com
-👌 正在下载：原配置已备份...
-🍃 下载成功：内核验证配置...
-🍃 订阅更新成功
-
-$ clashupdate auto [url]
-😼 已设置定时更新订阅
-
-$ clashupdate log
-✅ [2025-02-23 22:45:23] 订阅更新成功：https://example.com
-```
-
-- `clashupdate` 会记住上次更新成功的订阅链接，后续执行无需再指定。
-- 可通过 `crontab -e` 修改定时更新频率及订阅链接。
-- 通过配置文件进行更新：[pr#24](https://github.com/nelvko/clash-for-linux-install/pull/24#issuecomment-2565054701)
-
-### `Tun` 模式
-
-```bash
-$ clashtun
-😾 Tun 状态：关闭
-
-$ clashtun on
-😼 Tun 模式已开启
-```
-
-- 作用：实现本机及 `Docker` 等容器的所有流量路由到 `clash` 代理、DNS 劫持等。
-- 原理：[clash-verge-rev](https://www.clashverge.dev/guide/term.html#tun)、 [clash.wiki](https://clash.wiki/premium/tun-device.html)。
-- 注意事项：[#100](https://github.com/nelvko/clash-for-linux-install/issues/100#issuecomment-2782680205)
-
-### `Mixin` 配置
-
-```bash
-$ clashmixin
-😼 less 查看 mixin 配置
-
-$ clashmixin -e
-😼 vim 编辑 mixin 配置
-
-$ clashmixin -r
-😼 less 查看 运行时 配置
-```
-
-- 将自定义配置写在 `Mixin` 而不是原配置中，可避免更新订阅后丢失自定义配置。
-- 运行时配置是订阅配置和 `Mixin` 配置的并集。
-- 相同配置项优先级：`Mixin` 配置 > 订阅配置。
-
-### 自定义分流：指定域名直连（如公司内网）
-
-在 `Mixin` 的 `rules` 顶部添加规则，即可让指定域名绕过代理直连，实现公司流量与外网流量分离：
+在 `Mixin` 的 `rules.prepend` 中添加规则，即可让指定域名绕过代理直连，实现公司流量与外网流量分离：
 
 ```yaml
 rules:
-  - DOMAIN-KEYWORD,midea,DIRECT # 域名含 midea 的一律直连
+  prepend:
+    - DOMAIN-KEYWORD,midea,DIRECT # 域名含 midea 的一律直连
 ```
 
 - `DOMAIN-KEYWORD` 按域名关键字匹配（`aimp.midea.com`、`xxx.midea.com.cn` 均可命中），但不匹配 URL 路径。
-- 规则自上而下匹配，`Mixin` 的规则会排在订阅规则之前，优先生效。
+- `prepend` 的规则会排在订阅规则之前，自上而下匹配，优先生效。
 
-若内网域名只有公司 DNS 能解析（现象：开启代理后内网站点无法访问，`clashoff` 后恢复），还需在 `Mixin` 的 `dns` 中指定内网 DNS，并让这些域名跳过 `fake-ip`：
+若内网域名只有公司 DNS 能解析（现象：开启代理后内网站点无法访问，`clashctl off` 后恢复），还需在 `Mixin` 中补充 `dns` 配置，指定内网 DNS 并让这些域名跳过 `fake-ip`：
 
 ```yaml
 dns:
@@ -176,45 +91,31 @@ dns:
     - "+.midea.com.cn"
 ```
 
-- 原因：`fake-ip` 模式下公共 DNS（114.114.114.114 / 8.8.8.8）解析不到内网域名，`nameserver-policy` 让指定域名改走内网 DNS 解析。
+- 原因：`fake-ip` 模式下公共 DNS 解析不到内网域名，`nameserver-policy` 让指定域名改走内网 DNS 解析。
+- 注意：`fake-ip-filter` 是列表，深合并时会整体替换订阅中的同名列表，如需保留订阅原有条目请一并复制过来。
 - 内网 DNS 地址可通过 `resolvectl status` 或 `nmcli dev show <网卡> | grep -i dns` 查看。
-- 用 `clashmixin -e` 编辑保存后会自动合并配置并重启生效；验证：`curl -x http://127.0.0.1:7890 -I https://aimp.midea.com` 能通即分流成功。
+- 用 `clashctl mixin -e` 编辑保存后会自动合并配置并重启生效；验证：`curl -x http://127.0.0.1:7890 -I https://aimp.midea.com` 能通即分流成功。
 
-### 卸载
+## 💖 Support
 
-```bash
-sudo bash uninstall.sh
-```
+### <img alt="Maru Code" src="https://cdn.nodeimage.com/i/hc6anADTcLP0P2CTOoqUMkKcHER4KeYY.webp" width="20" height="20"> [Maru Code —— 稳定可靠的 API 中转服务](https://api.muteki.site/register?aff=NELVKO&promo=nelvko)
 
-## 常见问题
+- ⚡ 模型能力完整，`Claude` 系列满血可用。
+- 📊 计费倍率透明公开，成本更容易预估。
+- 🔑 自营号池保障可用性，日常调用更稳定。
+- 🎁 新用户注册赠送 `$2` 额度：👉[立即注册](https://api.muteki.site/register?aff=NELVKO&promo=nelvko)
 
-[wiki](https://github.com/nelvko/clash-for-linux-install/wiki/FAQ)
+## ⭐ Star History
 
-## 引用
-
-- [Clash 知识库](https://clash.wiki/)
-- [Clash 家族下载](https://www.clash.la/releases/)
-- [Clash Premium 2023.08.17](https://downloads.clash.wiki/ClashPremium/)
-- [mihomo v1.19.2](https://github.com/MetaCubeX/mihomo)
-- [subconverter v0.9.0：本地订阅转换](https://github.com/tindy2013/subconverter)
-- [yacd v0.3.8：Web 控制台](https://github.com/haishanh/yacd)
-- [yq v4.45.1：处理 yaml](https://github.com/mikefarah/yq)
-
-## Star History
-
-<a href="https://www.star-history.com/#nelvko/clash-for-linux-install&Date">
+<a href="https://star-history.dera.page/#nelvko/clash-for-linux-install&Date">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=nelvko/clash-for-linux-install&type=Date&theme=dark" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=nelvko/clash-for-linux-install&type=Date" />
-   <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=nelvko/clash-for-linux-install&type=Date" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=nelvko/clash-for-linux-install&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=nelvko/clash-for-linux-install&type=Date" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=nelvko/clash-for-linux-install&type=Date" />
  </picture>
 </a>
 
-## Thanks
+## ⚠️ Disclaimer
 
-[@鑫哥](https://github.com/TrackRay)
-
-## 特别声明
-
-1. 编写本项目主要目的为学习和研究 `Shell` 编程，不得将本项目中任何内容用于违反国家/地区/组织等的法律法规或相关规定的其他用途。
-2. 本项目保留随时对免责声明进行补充或更改的权利，直接或间接使用本项目内容的个人或组织，视为接受本项目的特别声明。
+- 编写本项目主要目的为学习和研究 `Shell` 编程，不得将本项目中任何内容用于违反国家/地区/组织等的法律法规或相关规定的其他用途。
+- 本项目保留随时对免责声明进行补充或更改的权利，直接或间接使用本项目内容的个人或组织，视为接受本项目的特别声明。

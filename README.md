@@ -48,10 +48,48 @@ clashctl ui              # 查看 Web 面板地址
 
 clashctl sub add <url>   # 添加订阅
 clashctl sub update      # 更新订阅
-clashctl node            # 切换节点
+clashctl node            # 切换节点（交互式）
 
 clashctl -h              # 查看全部命令
 ```
+
+### 切换节点（`clashctl node`）
+
+最常用的操作——在策略组之间切换节点：
+
+```bash
+# 交互式选择策略组 + 节点
+clashctl node use
+
+# 在指定策略组内交互式选节点
+clashctl node use MESL
+
+# 直接切换到指定节点（一步到位）
+clashctl node use MESL "🇸🇬 新加坡 01 [0.3X]"
+
+# 带延迟测速的交互式选择
+clashctl node use -d MESL
+
+# 列出所有策略组及当前节点
+clashctl node ls
+
+# 列出某个策略组的全部节点
+clashctl node ls MESL
+
+# 对策略组内所有节点测速
+clashctl node delay MESL
+
+# 对单个节点测速
+clashctl node delay -p "🇸🇬 新加坡 01 [0.3X]"
+```
+
+> **提示**：节点名需与订阅中的名称完全一致（含 emoji、空格、`[0.3X]` 等标记）。用 `clashctl node ls <组名>` 可查看准确名称。
+
+**常用策略组**：
+- `MESL` — 主代理组，默认所有流量走此组
+- `Fallback` — 自动容灾组（节点挂了自动切下一个）
+- `Auto` — 自动选最快节点
+- 其他按应用分类的组（`AI`、`Apple`、`Microsoft`、`Telegram` 等）可独立选节点
 
 ## 🧹 Uninstall
 
@@ -111,6 +149,38 @@ sudo nmcli con up "MIFI_2926" && sudo nmcli con up "Wired connection 1"
 - Result: proxy uplinks and all ordinary traffic leave via the personal hotspot — the company network sees no VPN traffic. Only midea domains (via the `MIDEA-DIRECT` bound NIC) and company intranet prefixes (static route) use the company network.
 - Verify with `ss -tn`: connections from mihomo to the airport servers should show the hotspot IP as source; connections to intranet sites should show the company IP.
 - Rollback: `sudo nmcli con mod "Wired connection 1" ipv4.route-metric 100 ipv4.routes ""`, set the hotspot metric back to 600, then reconnect both.
+
+## 🔧 Troubleshooting
+
+### 节点切换没生效？
+- 确认切的是正确的策略组：`clashctl node ls` 查看各组当前节点
+- 很多订阅有按应用分类的策略组（AI / Apple / Telegram 等），它们默认跟随 `MESL`，但也可独立设置
+- 验证：`curl -x http://127.0.0.1:7890 https://api.ipify.org` 看出口 IP
+
+### 开了代理后内网网站打不开
+这是因为 fake-ip 模式下公网 DNS 无法解析内网域名。解决方法见上方 **Custom Split-Routing** 章节，核心两步：
+1. 在 Mixin 的 `rules.prepend` 中加一条直连规则
+2. 在 Mixin 的 `dns.nameserver-policy` 中指定内网 DNS
+
+### 订阅更新失败 / 超时
+- 检查网络：`clashctl off` 后能否直接访问订阅链接
+- 调大 `.env` 里的超时参数：`CLASHCTL_SUB_TIMEOUT=30`
+- 手动更新：`clashctl sub update`
+
+### 节点连不上 / 速度慢
+- 先测速：`clashctl node delay MESL`
+- 切到延迟低的节点：`clashctl node use -d MESL`
+- [0.3X] 标记的节点通常带宽较低但价格便宜，适合日常浏览；看视频/下载建议用标准节点
+
+### 内核启动失败
+- 查看日志：`clashctl log`
+- 配置语法错误：通常是 Mixin 里的 YAML 格式不对，`clashctl mixin -e` 检查
+- 端口被占用：`ss -tlnp | grep 7890` 查看端口占用
+
+### Web 面板打不开
+- 面板地址：`clashctl ui`
+- 确认内核在运行：`clashctl status`
+- 外部访问需 `allow-lan: true`（在 Mixin 中设置），并配置 `secret` 以防未授权访问
 
 ## 💖 Support
 

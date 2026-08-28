@@ -9,21 +9,33 @@ allow-lan: false # 若开启务必设置身份验证以防暴露公网后被滥�
 authentication:
   # - "username:password"
 
-# prepend  前置插入：插入到原列表开头，适用于 rules、proxies、proxy-groups
-# append   后置追加：追加到原列表末尾，适用于 rules、proxies、proxy-groups
-# override 整体替换：按 name 匹配并替换整个项目，适用于 proxies、proxy-groups
-# inject   节点注入：向指定 proxy-group 的 proxies 列表注入节点，仅适用于 proxy-groups
+# ─── Mixin 作用说明 ──────────────────────────────────────────────
+#   prepend   前置插入：插入到原列表开头，适用于 rules / proxies / proxy-groups
+#   append    后置追加：追加到原列表末尾，适用于 rules / proxies / proxy-groups
+#   override  整体替换：按 name 匹配并替换整个项目，适用于 proxies / proxy-groups
+#   inject    节点注入：向指定 proxy-group 的 proxies 列表注入节点，仅适用于 proxy-groups
+#
+#   Mixin 对所有订阅全局生效——切换或更新订阅时都会重新合并。
+#   编辑后保存即自动合并并重启内核。
+#   更多示例：https://github.com/nelvko/clash-for-linux-install/discussions/562
+# ────────────────────────────────────────────────────────────────
 
-# 示例：https://github.com/nelvko/clash-for-linux-install/discussions/562
 rules:
   prepend:
     - DOMAIN,api64.ipify.org,DIRECT # 用于 clashui 获取真实公网 IP
-    # - DOMAIN-KEYWORD,github,proxy   # 用于 clashupgrade 升级内核
-    # - DOMAIN-KEYWORD,company,DIRECT # company domains direct; see README "Custom Split-Routing"
+    # ─── 企业内网分流示例（取消注释并修改域名即可）───────
+    # - DOMAIN-KEYWORD,company,DIRECT
+    # ─── 绑定特定网卡的直连示例 ────────────────────────
+    #   需在下方 proxies.prepend 中定义 COMPANY-DIRECT
+    # - DOMAIN-KEYWORD,company,COMPANY-DIRECT
   append:
 
 proxies:
   prepend:
+    # ─── 绑定到指定网卡的直连出站（适用于双网卡环境）────────
+    #   interface-name 强制流量从指定网卡出去（SO_BINDTODEVICE），
+    #   不受系统默认路由影响。不需要网卡绑定时用 DIRECT 即可。
+    # - {name: COMPANY-DIRECT, type: direct, udp: true, interface-name: eth0}
   append:
   override:
 
@@ -32,6 +44,16 @@ proxy-groups:
   append:
   override:
   inject:
+
+# ─── DNS 配置（可选）───────────────────────────────────────────
+#   若内网域名只能由内网 DNS 解析（开代理后内网网站打不开），
+#   取消下面注释并替换为你的内网 DNS 服务器地址。
+#   #outbound-name 后缀让 DNS 查询本身也走指定出站，
+#   避免在 Tun 模式下查询走错网卡超时。
+# dns:
+#   nameserver-policy:
+#     "+.company.com": ["10.0.0.1#COMPANY-DIRECT", "10.0.0.2#COMPANY-DIRECT"]
+#     "+.company.com.cn": ["10.0.0.1#COMPANY-DIRECT", "10.0.0.2#COMPANY-DIRECT"]
 
 # tun 配置
 tun:
@@ -47,4 +69,3 @@ tun:
   strict-route: true
   exclude-src-port: # 排除源端口，避免无法访问容器内服务 https://github.com/nelvko/clash-for-linux-install/issues/100#issuecomment-2995667368
     # - 80
-

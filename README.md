@@ -111,14 +111,14 @@ bash uninstall.sh
 ```yaml
 proxies:
   prepend:
-    - {name: MIDEA-DIRECT, type: direct, udp: true, interface-name: enp130s0} # bind to the company NIC
+    - {name: COMPANY-DIRECT, type: direct, udp: true, interface-name: eth0} # bind to the company NIC
 
 rules:
   prepend:
-    - DOMAIN-KEYWORD,midea,MIDEA-DIRECT # any domain containing "midea" goes direct via the company NIC
+    - DOMAIN-KEYWORD,company,COMPANY-DIRECT # any domain containing "company" goes direct via the company NIC
 ```
 
-- `DOMAIN-KEYWORD` matches a keyword in the domain name (hits `aimp.midea.com`, `xxx.midea.com.cn`, etc.), but does **not** match URL paths.
+- `DOMAIN-KEYWORD` matches a keyword in the domain name (hits `intranet.company.com`, `xxx.company.cn`, etc.), but does **not** match URL paths.
 - `prepend` rules/proxies are placed before the subscription's own entries and are matched top-down, so they take priority.
 - `interface-name` forces the outbound's traffic out of the given NIC (`SO_BINDTODEVICE`), independent of the system default route. If you don't need NIC binding, just use the built-in `DIRECT` instead.
 
@@ -127,26 +127,26 @@ If intranet domains can only be resolved by the company DNS (symptom: intranet s
 ```yaml
 dns:
   nameserver-policy:
-    "+.midea.com": ["10.156.20.35#MIDEA-DIRECT", "10.156.20.36#MIDEA-DIRECT"] # replace with your company DNS
-    "+.midea.com.cn": ["10.156.20.35#MIDEA-DIRECT", "10.156.20.36#MIDEA-DIRECT"]
+    "+.company.com": ["10.0.0.1#COMPANY-DIRECT", "10.0.0.2#COMPANY-DIRECT"] # replace with your company DNS
+    "+.company.cn": ["10.0.0.1#COMPANY-DIRECT", "10.0.0.2#COMPANY-DIRECT"]
 ```
 
 - Why: in `fake-ip` mode public DNS servers can't resolve intranet domains; `nameserver-policy` routes those lookups to the internal DNS instead.
 - The `#outbound-name` suffix on a DNS server sends the query itself through that outbound. With Tun enabled, the kernel binds default egress to the default-route NIC — without this, internal DNS queries leave via the wrong interface and time out.
 - Find your internal DNS servers with `resolvectl status` or `nmcli dev show <iface> | grep -i dns`.
-- Editing via `clashctl mixin -e` re-merges and restarts automatically on save. Verify with: `curl -x http://127.0.0.1:7890 -I https://aimp.midea.com` — a response means split-routing works.
+- Editing via `clashctl mixin -e` re-merges and restarts automatically on save. Verify with: `curl -x http://127.0.0.1:7890 -I https://intranet.company.com` — a response means split-routing works.
 
 ### Advanced: NIC-Level Split (company traffic via company network, everything else via an outside network)
 
 On a dual-NIC setup (e.g. company ethernet + personal hotspot), make the outside network the default route and pin only the intranet prefixes to the company gateway; combined with the `interface-name` outbound above, this gives physical separation:
 
 ```bash
-sudo nmcli con mod "Wired connection 1" ipv4.route-metric 700 ipv4.routes "10.0.0.0/8 10.156.64.1" # company prefixes via company gateway
-sudo nmcli con mod "MIFI_2926" ipv4.route-metric 100  # personal hotspot becomes the default egress
-sudo nmcli con up "MIFI_2926" && sudo nmcli con up "Wired connection 1"
+sudo nmcli con mod "Wired connection 1" ipv4.route-metric 700 ipv4.routes "10.0.0.0/8 10.0.0.1" # company prefixes via company gateway
+sudo nmcli con mod "Personal Hotspot" ipv4.route-metric 100  # personal hotspot becomes the default egress
+sudo nmcli con up "Personal Hotspot" && sudo nmcli con up "Wired connection 1"
 ```
 
-- Result: proxy uplinks and all ordinary traffic leave via the personal hotspot — the company network sees no VPN traffic. Only midea domains (via the `MIDEA-DIRECT` bound NIC) and company intranet prefixes (static route) use the company network.
+- Result: proxy uplinks and all ordinary traffic leave via the personal hotspot — the company network sees no VPN traffic. Only company domains (via the `COMPANY-DIRECT` bound NIC) and company intranet prefixes (static route) use the company network.
 - Verify with `ss -tn`: connections from mihomo to the airport servers should show the hotspot IP as source; connections to intranet sites should show the company IP.
 - Rollback: `sudo nmcli con mod "Wired connection 1" ipv4.route-metric 100 ipv4.routes ""`, set the hotspot metric back to 600, then reconnect both.
 

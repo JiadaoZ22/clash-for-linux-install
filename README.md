@@ -150,6 +150,59 @@ sudo nmcli con up "Personal Hotspot" && sudo nmcli con up "Wired connection 1"
 - Verify with `ss -tn`: connections from mihomo to the airport servers should show the hotspot IP as source; connections to intranet sites should show the company IP.
 - Rollback: `sudo nmcli con mod "Wired connection 1" ipv4.route-metric 100 ipv4.routes ""`, set the hotspot metric back to 600, then reconnect both.
 
+## ☁️ Chinese Cloud Drives: Always Direct (AliYunPan, BaiduNetdisk, …)
+
+Chinese cloud drives host both their control API and upload/download (CDN/object-store)
+nodes on **mainland-China IPs**. Sending that traffic out through a proxy node is pure
+cost — extra RTT, and on rate-limited nodes (those tagged `[0.3X]`) a hard throughput cap —
+so the default `mixin.yaml` pins these services to `DIRECT`:
+
+| Service | Domains forced DIRECT |
+|---|---|
+| AliYunPan 阿里云盘 | `alipan.com`, `aliyundrive.com` |
+| BaiduNetdisk 百度网盘 | `baidupcs.com`, `pan.baidu.com`, `bdimg.com` |
+| Quark 夸克网盘 | `quark.cn` |
+| TianYi 天翼云盘 | `189.cn`, `189cloud.com` |
+| 115 网盘 | `115.com` |
+| ChengTong 城通网盘 | `ctfile.com`, `ctfile.net` |
+| XunLei 迅雷云盘 | `pan.xunlei.com`, `xunlei.com` |
+| Weiyun 腾讯微云 | `weiyun.com` |
+
+These live in `rules.prepend`, which the merge splices **ahead of every subscription's own
+rules**, so they are deterministic regardless of which subscription is active or how its
+rules are ordered. In practice the subscription's `GEOIP,cn` fallback already routes most
+of them direct; the explicit rules only make that intent explicit and order-independent.
+
+> **Egress-NIC boundary on this dual-link host.** All cloud drives — BaiduNetdisk included
+> — leave over the **WiFi** default route via plain `DIRECT`. The wired Midea NIC
+> (`MIDEA-DIRECT`, `interface-name: enp130s0`) is reserved **only** for destinations whose
+> domain contains the keyword `midea` and for explicitly pinned Midea internal IPs. Do not
+> bind non-Midea cloud drives to `MIDEA-DIRECT`.
+
+> **"When the IP is already in China."** `DIRECT` here means no proxy *node*. The decision
+> is domain-based for determinism; if one of these services ever resolves to an overseas CDN
+> PoP you'd rather proxy, remove its explicit rule and let `GEOIP,cn` decide on the resolved
+> destination instead. Verify what actually matched a connection in the Web UI or with
+> `clashctl log`.
+
+### Known limitation — TUN mode is not bypassed (deferred)
+
+When **TUN mode** is enabled (`tun.enable: true`), all traffic still *enters* the mihomo
+stack via the `Meta` virtual NIC and fake-IP DNS (`198.18.0.0/16`), even for the services
+above. They exit via the `DIRECT` chain (verified: `chains=['DIRECT']`, real China IPs), so no
+proxy **node** is used — but the packets are still processed by the kernel, adding a small
+per-connection overhead. Fully bypassing TUN for these domains (e.g. `tun.route-exclude-address`
+/ routing their real IPs before the TUN default route) is **not implemented yet** and was
+deprioritized. Revisit if the per-connection overhead ever shows up in profiling.
+
+Verify direct routing of a drive host:
+
+```bash
+# rule output should name DIRECT (or a direct outbound), with a China destination IP
+curl -s -H "Authorization: Bearer $SECRET" http://127.0.0.1:9090/connections \
+  | grep -E 'alipan|baidupcs'
+```
+
 ## 🔧 Troubleshooting
 
 ### 节点切换没生效？

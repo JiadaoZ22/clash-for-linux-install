@@ -22,6 +22,28 @@ authentication:
 
 rules:
   prepend:
+    # ─── Chinese cloud drives: always DIRECT when the endpoint is in China ───
+    # These services host their API + upload/CDN nodes on China IPs, so routing
+    # them out through a proxy node only adds latency/bandwidth cost (the proxy's
+    # downlink is often rate-limited, e.g. [0.3X]). The GEOIP,cn fallback already
+    # sends most of these direct; the explicit rules make it deterministic across
+    # subscriptions regardless of rule ordering. See README "Chinese Cloud Drives".
+    - DOMAIN-SUFFIX,alipan.com,DIRECT            # AliYunPan (阿里云盘)
+    - DOMAIN-SUFFIX,aliyundrive.com,DIRECT       # AliYunPan legacy/CDN
+    - DOMAIN-SUFFIX,baidupcs.com,DIRECT          # BaiduNetdisk (百度网盘)
+    - DOMAIN-SUFFIX,pan.baidu.com,DIRECT
+    - DOMAIN-SUFFIX,bdimg.com,DIRECT             # Baidu CDN used by netdisk
+    - DOMAIN-SUFFIX,quark.cn,DIRECT              # Quark (夸克网盘)
+    - DOMAIN-SUFFIX,189.cn,DIRECT                # TianYi Cloud (天翼云盘)
+    - DOMAIN-SUFFIX,189cloud.com,DIRECT
+    - DOMAIN-SUFFIX,115.com,DIRECT               # 115 网盘
+    - DOMAIN-SUFFIX,ctfile.com,DIRECT            # ChengTong/城通网盘
+    - DOMAIN-SUFFIX,ctfile.net,DIRECT
+    - DOMAIN-SUFFIX,pan.xunlei.com,DIRECT        # XunLei (迅雷云盘)
+    - DOMAIN-SUFFIX,xunlei.com,DIRECT
+    - DOMAIN-SUFFIX,weiyun.com,DIRECT            # Weiyun (腾讯微云)
+    # Endpoint already abroad (e.g. a CDN PoP outside CN) keeps normal rule
+    # processing — the GEOIP,cn test applies to the resolved destination.
     - DOMAIN,api64.ipify.org,DIRECT # 用于 clashui 获取真实公网 IP
     # ─── 企业内网分流示例（取消注释并修改域名即可）───────
     # - DOMAIN-KEYWORD,company,DIRECT

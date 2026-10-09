@@ -1,5 +1,33 @@
 mixed-port: 7890
 
+# ════════════════════════════════════════════════════════════════
+#  Streaming egress policy (dual-NIC) — FILL IN ONCE PER HOST
+# ════════════════════════════════════════════════════════════════
+#  Goal:
+#    1) On-net/intranet streaming (e.g. any host containing the
+#       STREAM_KEYWORD, such as "midea") -> WIRED NIC, always DIRECT
+#       (never via a VPN provider node, regardless of clashctl state).
+#    2) All other streaming ........................... -> WIFI NIC.
+#       Whether it additionally exits through a VPN provider node depends
+#       ONLY on clashctl (on/off), the active mode (Rule/Global/Direct)
+#       and the proxy-group selection — nothing here is tied to a provider,
+#       so the same file works with ANY subscription on ANY machine.
+#
+#  Placeholders — list interface names with: ip -o link show
+#    WIRED_NIC      wired NIC,  e.g. eth0 / enp1s0 / enp130s0
+#    WIFI_NIC       WiFi NIC,   e.g. wlan0 / wlp3s0 / wlp131s0
+#    STREAM_KEYWORD on-net streaming keyword, e.g. midea / company
+#
+#  Activation:
+#    1. Uncomment every template line marked below (remove leading "# ").
+#    2. Replace the placeholders with this host's values.
+#    3. Save via `clashctl mixin -e` (merge + restart are automatic).
+#
+#  Global default egress = WIFI: proxy nodes (the VPN transport), ordinary
+#  DIRECT and DNS all dial from WIFI_NIC. An outbound with its own
+#  interface-name (WIRED-DIRECT below) overrides the global value.
+# interface-name: wlan0                       # <- WIFI_NIC
+
 external-controller: "0.0.0.0:9090"
 external-ui: dist
 external-ui-url: https://github.com/Zephyruso/zashboard/releases/latest/download/dist.zip
@@ -45,19 +73,26 @@ rules:
     # Endpoint already abroad (e.g. a CDN PoP outside CN) keeps normal rule
     # processing — the GEOIP,cn test applies to the resolved destination.
     - DOMAIN,api64.ipify.org,DIRECT # 用于 clashui 获取真实公网 IP
-    # ─── 企业内网分流示例（取消注释并修改域名即可）───────
+    # ─── On-net streaming: forced DIRECT via the WIRED NIC ───────────────
+    #   List every keyword / domain suffix / server IP that belongs to the
+    #   on-net streaming service. prepend rules are matched top-down and win
+    #   over the subscription's own rules, so these stay direct even when the
+    #   VPN provider is ON and a proxy node is selected elsewhere.
+    # - DOMAIN-KEYWORD,midea,WIRED-DIRECT                 # <- STREAM_KEYWORD
+    # - DOMAIN-SUFFIX,midea.com,WIRED-DIRECT
+    # - DOMAIN-SUFFIX,midea.com.cn,WIRED-DIRECT
+    # - IP-CIDR,10.0.0.5/32,WIRED-DIRECT,no-resolve       # pin streaming server IPs
+    # ─── Plain intranet direct (no NIC binding needed) ──────────────────
     # - DOMAIN-KEYWORD,company,DIRECT
-    # ─── 绑定特定网卡的直连示例 ────────────────────────
-    #   需在下方 proxies.prepend 中定义 COMPANY-DIRECT
-    # - DOMAIN-KEYWORD,company,COMPANY-DIRECT
   append:
 
 proxies:
   prepend:
-    # ─── 绑定到指定网卡的直连出站（适用于双网卡环境）────────
-    #   interface-name 强制流量从指定网卡出去（SO_BINDTODEVICE），
-    #   不受系统默认路由影响。不需要网卡绑定时用 DIRECT 即可。
-    # - {name: COMPANY-DIRECT, type: direct, udp: true, interface-name: eth0}
+    # ─── Direct outbound pinned to the WIRED NIC (dual-NIC hosts) ────────
+    #   interface-name forces egress via SO_BINDTODEVICE, independent of the
+    #   system default route, so on-net streaming can never leak onto WiFi.
+    #   On single-NIC hosts use the built-in DIRECT instead and delete this.
+    # - {name: WIRED-DIRECT, type: direct, udp: true, interface-name: eth0} # <- WIRED_NIC
   append:
   override:
 
@@ -67,15 +102,17 @@ proxy-groups:
   override:
   inject:
 
-# ─── DNS 配置（可选）───────────────────────────────────────────
-#   若内网域名只能由内网 DNS 解析（开代理后内网网站打不开），
-#   取消下面注释并替换为你的内网 DNS 服务器地址。
-#   #outbound-name 后缀让 DNS 查询本身也走指定出站，
-#   避免在 Tun 模式下查询走错网卡超时。
+# ─── DNS for on-net domains (optional but usually required) ─────
+#   If on-net streaming domains can only be resolved by internal DNS
+#   (symptom: unreachable while clashctl is on, works after `clashctl off`),
+#   send those lookups to the internal resolvers. The #outbound-name suffix
+#   makes the query itself egress via that outbound (wired) — essential with
+#   Tun, whose default egress would otherwise take the query out via WiFi.
+#   Find DNS servers: resolvectl status | nmcli dev show <WIRED_NIC> | grep -i dns
 # dns:
 #   nameserver-policy:
-#     "+.company.com": ["10.0.0.1#COMPANY-DIRECT", "10.0.0.2#COMPANY-DIRECT"]
-#     "+.company.com.cn": ["10.0.0.1#COMPANY-DIRECT", "10.0.0.2#COMPANY-DIRECT"]
+#     "+.midea.com": ["10.0.0.1#WIRED-DIRECT", "10.0.0.2#WIRED-DIRECT"] # <- internal DNS
+#     "+.midea.com.cn": ["10.0.0.1#WIRED-DIRECT", "10.0.0.2#WIRED-DIRECT"]
 
 # tun 配置
 tun:

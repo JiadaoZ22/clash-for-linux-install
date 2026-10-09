@@ -104,51 +104,83 @@ bash uninstall.sh
 - [Usage](https://github.com/nelvko/clash-for-linux-install/wiki) — 命令用法与示例。
 - [FAQ](https://github.com/nelvko/clash-for-linux-install/wiki/FAQ) — 常见问题。
 
-## 🧭 Custom Split-Routing: Direct Access for Specific Domains (e.g. Company Intranet)
+## 🧭 Custom Split-Routing: Streaming Over Wired, Everything Else Over WiFi
 
-`Mixin` applies **globally to all subscriptions** — switching or updating subscriptions always re-merges the base config with your Mixin. Add a rule to `rules.prepend` to bypass the proxy for specific domains:
+`Mixin` applies **globally to all subscriptions** — switching or updating subscriptions
+always re-merges the base config with your Mixin. The shipped `resources/mixin.yaml`
+contains a fill-in-the-blanks template implementing this provider-agnostic policy:
+
+1. **On-net/intranet streaming** (any host matching your keyword, e.g. `midea`)
+   → **wired NIC, always DIRECT**, never via a VPN provider node.
+2. **All other streaming** → **WiFi NIC**. Whether it additionally exits through a
+   VPN node depends solely on clashctl's on/off state, mode (Rule/Global/Direct) and
+   proxy-group selection — the Mixin references no provider, so it works with **any
+   subscription on any machine**.
+
+Per-host setup (find interface names with `ip -o link show`):
 
 ```yaml
+# global default egress = WiFi: proxy nodes (VPN transport), ordinary DIRECT and DNS
+interface-name: wlan0                       # <- WIFI_NIC
+
 proxies:
   prepend:
-    - {name: COMPANY-DIRECT, type: direct, udp: true, interface-name: eth0} # bind to the company NIC
+    # direct outbound pinned to the wired NIC (own interface-name overrides the global one)
+    - {name: WIRED-DIRECT, type: direct, udp: true, interface-name: eth0} # <- WIRED_NIC
 
 rules:
   prepend:
-    - DOMAIN-KEYWORD,company,COMPANY-DIRECT # any domain containing "company" goes direct via the company NIC
+    # on-net streaming is matched first and forced direct over the wired NIC
+    - DOMAIN-KEYWORD,midea,WIRED-DIRECT     # <- STREAM_KEYWORD
+    - DOMAIN-SUFFIX,midea.com,WIRED-DIRECT
+    - IP-CIDR,10.0.0.5/32,WIRED-DIRECT,no-resolve # pin streaming server IPs as needed
 ```
 
-- `DOMAIN-KEYWORD` matches a keyword in the domain name (hits `intranet.company.com`, `xxx.company.cn`, etc.), but does **not** match URL paths.
-- `prepend` rules/proxies are placed before the subscription's own entries and are matched top-down, so they take priority.
-- `interface-name` forces the outbound's traffic out of the given NIC (`SO_BINDTODEVICE`), independent of the system default route. If you don't need NIC binding, just use the built-in `DIRECT` instead.
+- `DOMAIN-KEYWORD` matches a keyword in the domain name (hits `stream.midea.com`,
+  `midea.cn`, etc.) but **not** URL paths; use `DOMAIN-SUFFIX`/`IP-CIDR` for exact scope.
+- `prepend` rules/proxies are placed before the subscription's own entries and matched
+  top-down, so they win even when the VPN provider is ON and a node is selected elsewhere.
+- `interface-name` forces egress via `SO_BINDTODEVICE`, independent of the system default
+  route, so on-net streaming can never leak onto WiFi. Single-NIC hosts can skip it and
+  use the built-in `DIRECT`.
+- **clashctl ON (Rule mode):** other streaming goes WiFi and may traverse the selected
+  provider node per the subscription rules. **clashctl OFF:** clashctl no longer manages
+  traffic at all — the operating system's own routes apply, so make WiFi the OS default
+  route for the non-on-net policy to hold outside the proxy too. **Global/Direct modes:**
+  egress follows the chosen mode; the wired-bound on-net rules above still take precedence.
 
-If intranet domains can only be resolved by the company DNS (symptom: intranet sites unreachable while the proxy is on, working again after `clashctl off`), also add a `dns` section to `Mixin` pointing those domains at the internal DNS servers:
+If on-net domains can only be resolved by internal DNS (symptom: unreachable while the
+proxy is on, working after `clashctl off`), add a `dns` policy:
 
 ```yaml
 dns:
   nameserver-policy:
-    "+.company.com": ["10.0.0.1#COMPANY-DIRECT", "10.0.0.2#COMPANY-DIRECT"] # replace with your company DNS
-    "+.company.cn": ["10.0.0.1#COMPANY-DIRECT", "10.0.0.2#COMPANY-DIRECT"]
+    "+.midea.com": ["10.0.0.1#WIRED-DIRECT", "10.0.0.2#WIRED-DIRECT"] # <- internal DNS
 ```
 
-- Why: in `fake-ip` mode public DNS servers can't resolve intranet domains; `nameserver-policy` routes those lookups to the internal DNS instead.
-- The `#outbound-name` suffix on a DNS server sends the query itself through that outbound. With Tun enabled, the kernel binds default egress to the default-route NIC — without this, internal DNS queries leave via the wrong interface and time out.
-- Find your internal DNS servers with `resolvectl status` or `nmcli dev show <iface> | grep -i dns`.
-- Editing via `clashctl mixin -e` re-merges and restarts automatically on save. Verify with: `curl -x http://127.0.0.1:7890 -I https://intranet.company.com` — a response means split-routing works.
+- Why: in `fake-ip` mode public DNS can't resolve intranet domains; `nameserver-policy`
+  routes those lookups to the internal resolvers.
+- The `#outbound-name` suffix sends the query itself through that outbound. With Tun
+  enabled, default egress otherwise leaves via the WiFi NIC and internal lookups time out.
+- Find internal DNS with `resolvectl status` or `nmcli dev show <WIRED_NIC> | grep -i dns`.
+- Editing via `clashctl mixin -e` re-merges and restarts automatically on save.
 
-### Advanced: NIC-Level Split (company traffic via company network, everything else via an outside network)
+### Advanced: Host-Route Metrics for Dual Uplinks
 
-On a dual-NIC setup (e.g. company ethernet + personal hotspot), make the outside network the default route and pin only the intranet prefixes to the company gateway; combined with the `interface-name` outbound above, this gives physical separation:
+On a dual-NIC setup, make WiFi the default route and pin only intranet prefixes to the
+wired gateway, so non-on-net traffic — including provider uplinks — has a deterministic
+physical path even when clashctl is off:
 
 ```bash
-sudo nmcli con mod "Wired connection 1" ipv4.route-metric 700 ipv4.routes "10.0.0.0/8 10.0.0.1" # company prefixes via company gateway
-sudo nmcli con mod "Personal Hotspot" ipv4.route-metric 100  # personal hotspot becomes the default egress
+sudo nmcli con mod "Wired connection 1" ipv4.route-metric 700 ipv4.routes "10.0.0.0/8 10.0.0.1"
+sudo nmcli con mod "Personal Hotspot" ipv4.route-metric 100  # WiFi becomes the default egress
 sudo nmcli con up "Personal Hotspot" && sudo nmcli con up "Wired connection 1"
 ```
 
-- Result: proxy uplinks and all ordinary traffic leave via the personal hotspot — the company network sees no VPN traffic. Only company domains (via the `COMPANY-DIRECT` bound NIC) and company intranet prefixes (static route) use the company network.
-- Verify with `ss -tn`: connections from mihomo to the airport servers should show the hotspot IP as source; connections to intranet sites should show the company IP.
-- Rollback: `sudo nmcli con mod "Wired connection 1" ipv4.route-metric 100 ipv4.routes ""`, set the hotspot metric back to 600, then reconnect both.
+- Result: provider nodes and ordinary traffic leave via WiFi — the wired network sees no
+  VPN traffic; only `WIRED-DIRECT` domains and pinned intranet prefixes use the wired NIC.
+- Verify with `ss -tn`: mihomo→provider sockets show the WiFi IP as source; on-net streams
+  show the wired IP. Rollback: clear the static route and restore both metrics to 100/600.
 
 ## ☁️ Chinese Cloud Drives: Always Direct (AliYunPan, BaiduNetdisk, …)
 
@@ -173,11 +205,11 @@ rules**, so they are deterministic regardless of which subscription is active or
 rules are ordered. In practice the subscription's `GEOIP,cn` fallback already routes most
 of them direct; the explicit rules only make that intent explicit and order-independent.
 
-> **Egress-NIC boundary on this dual-link host.** All cloud drives — BaiduNetdisk included
-> — leave over the **WiFi** default route via plain `DIRECT`. The wired Midea NIC
-> (`MIDEA-DIRECT`, `interface-name: enp130s0`) is reserved **only** for destinations whose
-> domain contains the keyword `midea` and for explicitly pinned Midea internal IPs. Do not
-> bind non-Midea cloud drives to `MIDEA-DIRECT`.
+> **Egress NICs.** These drive rules target plain `DIRECT`; the physical NIC that uses
+> follows the global default (`interface-name`) unless an outbound pins it elsewhere.
+> On a dual-NIC host configured for the streaming policy, see **Custom Split-Routing**
+> above: on-net streaming (e.g. Midea) is pinned to wired, while these drives and all
+> other traffic egress over the WiFi default route.
 
 > **"When the IP is already in China."** `DIRECT` here means no proxy *node*. The decision
 > is domain-based for determinism; if one of these services ever resolves to an overseas CDN
